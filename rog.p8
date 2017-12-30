@@ -22,8 +22,8 @@ player = {
 }
 
 dungeon = {
-  o = 8, -- origin
-  s = 64 -- size
+  o = 0, -- origin
+  s = 15 -- size
 }
 
 function _init()
@@ -32,6 +32,7 @@ function _init()
   grow_tree()
   make_rooms()
   make_hallways()
+  place_player()
 end
 
 function _update()
@@ -41,18 +42,18 @@ end
 
 function _draw()
   cls()
-  --draw_tree()
   draw_rooms()
   draw_hallways()
+  map()
   draw_player()
   print(player.x .. ", " .. player.y, 0, 122, colors.gray)
 end
 
 function handle_input()
-  if btn(0) then player.dx = -1 end
-  if btn(1) then player.dx = 1 end
-  if btn(2) then player.dy = -1 end
-  if btn(3) then player.dy = 1 end
+  if btnp(0) then player.dx = -1 end
+  if btnp(1) then player.dx = 1 end
+  if btnp(2) then player.dy = -1 end
+  if btnp(3) then player.dy = 1 end
 
   if btnp(4) then
     _init()
@@ -60,27 +61,30 @@ function handle_input()
 end
 
 function place_player()
-  --local room_number = flr(rnd(#rooms)) + 1
-  --local room = rooms[room_number]
-  --player.x = flr(rnd(room.w - 1)) + room.x + 1
-  --player.y = flr(rnd(room.h - 1)) + room.y + 1
+  local room = get_random_room(tree[1][1])
+  player.x = flr(rnd(room.x1 - room.x)) + room.x
+  player.y = flr(rnd(room.y1 - room.y)) + room.y
 end
 
 function move_player()
   local potential_move = {player.x + player.dx, player.y + player.dy}
-  --if not is_solid(potential_move) then
+  if not is_solid(potential_move) then
     if potential_move[1] > 0 then player.x += player.dx end
     if potential_move[2] > 0 then player.y += player.dy end
-  --end
+  end
   player.dx = 0
   player.dy = 0
 end
 
 function is_solid(xy)
-  return pget(xy[1], xy[2]) == colors.pink
+  local sprite = mget(xy[1], xy[2])
+  if sprite == 0 then return true end
+  if fget(sprite, 0) then return true end
+  return not fget(sprite, 1)
 end
 
 function draw_player()
+  spr(0, player.x * 8, player.y * 8)
   pset(player.x, player.y, colors.yellow)
 end
 -->8
@@ -106,16 +110,6 @@ function grow_tree()
   add(tree, {})
   for node in all(leaves) do
     split_node(node)
-  end
-end
-
-function draw_tree()
-  for i, level in pairs(tree) do
-    for j, node in pairs(level) do
-      if i != 1 then
-        rect(node.x, node.y, node.x + node.w, node.y + node.h)
-      end
-    end
   end
 end
 
@@ -194,8 +188,18 @@ function make_rooms()
 end
 
 function draw_rooms()
+  for i = 0, 16 do
+   for j = 0, 16 do
+     mset(i, j, 16)
+   end
+  end
   for room in all(rooms) do
-    rectfill(room.x, room.y, room.x1, room.y1, room.c)
+    for i = room.x, room.x1 do
+      for j = room.y, room.y1 do
+        mset(i, j, 17)
+      end
+    end
+    rectfill(room.x, room.y, room.x1, room.y1, colors.pink)
   end
 end
 
@@ -219,11 +223,11 @@ function make_hallways()
 
         -- save the hallway on the node
         if flr(rnd(2)) + 1 then -- go horizontal or vertical first
-          add(node.hallways, {{room1_location[1], room1_location[2], room2_location[1], room1_location[2]},
-                             {room2_location[1], room1_location[2], room2_location[1], room2_location[2]}})
+          add(node.hallways, {{room1_location[1], room1_location[2], room2_location[1], room1_location[2], true},
+                             {room2_location[1], room1_location[2], room2_location[1], room2_location[2], false}})
         else
-          add(node.hallways, {{room1_location[1], room1_location[2], room1_location[1], room2_location[2]},
-                             {room1_location[1], room2_location[2], room2_location[1], room2_location[2]}})
+          add(node.hallways, {{room1_location[1], room1_location[2], room1_location[1], room2_location[2], false},
+                             {room1_location[1], room2_location[2], room2_location[1], room2_location[2], true}})
         end
       end
       -- get a random room from each node
@@ -236,8 +240,33 @@ function draw_hallways()
     local hallways = node.hallways
     if hallways != nil then
       for h in all(hallways) do
-        line(h[1][1], h[1][2], h[1][3], h[1][4], colors.gray)
-        line(h[2][1], h[2][2], h[2][3], h[2][4], colors.gray)
+        for l in all(h) do
+          local step = 1
+          local x1 = l[1]
+          local y1 = l[2]
+          local x2 = l[3]
+          local y2 = l[4]
+          local is_horizontal = l[5]
+
+          if is_horizontal then
+            if x1 > x2 then
+              step = -1
+            end
+            for i = x1, x2, step do
+              mset(i, y1, 17)
+            end
+          else -- it is vertical
+            if y1 > y2 then
+              step = -1
+            end
+            for i = y1, y2, step do
+              mset(x1, i, 17)
+            end
+          end
+        end
+
+        line(h[1][1], h[1][2], h[1][3], h[1][4], colors.pink)
+        line(h[2][1], h[2][2], h[2][3], h[2][4], colors.pink)
       end
     end
   end
@@ -248,11 +277,22 @@ function get_random_point_in_room(room)
           flr(rnd(room.y1 - room.y)) + room.y}
 end
 __gfx__
-aaaaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a070070a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a077770a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a007700a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a000000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-aaaaaaaa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+aaaaaaaaaaaaaaaa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+a000000aa000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+a070070aa070070a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+a000000aa000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+a077770aa077770a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+a007700aa007700a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+a000000aa000000a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+aaaaaaaaaaaaaaaa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+66666666555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+__gff__
+0000000000000000000000000000000001020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
